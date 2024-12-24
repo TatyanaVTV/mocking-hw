@@ -15,8 +15,7 @@ import ru.productstar.mockito.repository.WarehouseRepository;
 
 import java.util.Arrays;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,6 +46,8 @@ public class WarehouseServiceTest {
     @Mock
     WarehouseRepository warehouseRepo = InitRepository.getInstance().getWarehouseRepository();
 
+    WarehouseService warehouseService;
+
     @BeforeEach
     void setup() {
         Product ram = new Product(EXISTING_IN_ALL_WH_PRODUCT);
@@ -65,13 +66,27 @@ public class WarehouseServiceTest {
         Warehouse wh2 = new Warehouse("MockWarehouse2", 50);
         wh2.addStock(new Stock(productRepo.getByName(EXISTING_IN_ALL_WH_PRODUCT), 250, 3));
 
+        Warehouse wh3 = new Warehouse("MockWarehouse3_empty", 20);
+
         lenient().when(warehouseRepo.getById(0)).thenReturn(wh0);
-        lenient().when(warehouseRepo.all()).thenReturn(Arrays.asList(wh0, wh1, wh2));
+        lenient().when(warehouseRepo.getById(1)).thenReturn(wh1);
+        lenient().when(warehouseRepo.getById(2)).thenReturn(wh2);
+        lenient().when(warehouseRepo.getById(3)).thenReturn(wh3);
+        lenient().when(warehouseRepo.all()).thenReturn(Arrays.asList(wh0, wh1, wh2, wh3));
+
+        warehouseService = new WarehouseService(warehouseRepo);
+    }
+
+    private int getStocksCount(int warehouseId, String productName) {
+        return warehouseRepo.getById(warehouseId).getStocks().stream()
+                .filter(stock -> stock.getProduct().getName().equals(productName))
+                .findFirst()
+                .orElse(new Stock(productRepo.getByName(productName), 0, 0))
+                .getCount();
     }
 
     @Test
     public void test_findWarehouse_NotExistingProduct() {
-        WarehouseService warehouseService = new WarehouseService(warehouseRepo);
         Warehouse wh = warehouseService.findWarehouse(NOT_EXISTING_PRODUCT, 1);
 
         assertNull(wh);
@@ -82,21 +97,8 @@ public class WarehouseServiceTest {
     }
 
     @Test
-    public void test_findWarehouse_ExistingProduct_EnoughCount() {
-        WarehouseService warehouseService = new WarehouseService(warehouseRepo);
-        Warehouse wh = warehouseService.findWarehouse(EXISTING_IN_ALL_WH_PRODUCT, 5);
-
-        assertNotNull(wh);
-
-        InOrder inOrder = inOrder(warehouseRepo, productRepo);
-        inOrder.verify(warehouseRepo).all();
-        inOrder.verifyNoMoreInteractions();
-    }
-
-    @Test
-    public void test_findWarehouse_ExistingProduct_NotEnoughCount() {
-        WarehouseService warehouseService = new WarehouseService(warehouseRepo);
-        Warehouse wh = warehouseService.findWarehouse(EXISTING_IN_ALL_WH_PRODUCT, 10);
+    public void test_findWarehouse_NullProduct() {
+        Warehouse wh = warehouseService.findWarehouse(null, 1);
 
         assertNull(wh);
 
@@ -106,8 +108,46 @@ public class WarehouseServiceTest {
     }
 
     @Test
+    public void test_findWarehouse_ExistingProduct_EnoughCount() {
+        Warehouse wh = warehouseService.findWarehouse(EXISTING_IN_ALL_WH_PRODUCT, 4);
+
+        assertNotNull(wh);
+
+        InOrder inOrder = inOrder(warehouseRepo, productRepo);
+        inOrder.verify(warehouseRepo).all();
+        inOrder.verifyNoMoreInteractions();
+
+        assertEquals(5, getStocksCount(0, EXISTING_IN_ALL_WH_PRODUCT));
+    }
+
+    @Test
+    public void test_findWarehouse_ExistingProduct_ZeroCount() {
+        Warehouse wh = warehouseService.findWarehouse(EXISTING_IN_ALL_WH_PRODUCT, 0);
+
+        assertNotNull(wh);
+
+        InOrder inOrder = inOrder(warehouseRepo, productRepo);
+        inOrder.verify(warehouseRepo).all();
+        inOrder.verifyNoMoreInteractions();
+
+        assertEquals(5, getStocksCount(0, EXISTING_IN_ALL_WH_PRODUCT));
+    }
+
+    @Test
+    public void test_findWarehouse_ExistingProduct_NotEnoughCount() {
+        Warehouse wh = warehouseService.findWarehouse(EXISTING_IN_ALL_WH_PRODUCT, 10);
+
+        assertNull(wh);
+
+        InOrder inOrder = inOrder(warehouseRepo, productRepo);
+        inOrder.verify(warehouseRepo).all();
+        inOrder.verifyNoMoreInteractions();
+
+        assertEquals(5, getStocksCount(0, EXISTING_IN_ALL_WH_PRODUCT));
+    }
+
+    @Test
     public void test_findClosestWarehouse_NotExistingProduct() {
-        WarehouseService warehouseService = new WarehouseService(warehouseRepo);
         Warehouse wh = warehouseService.findClosestWarehouse(NOT_EXISTING_PRODUCT, 1);
 
         assertNull(wh);
@@ -118,8 +158,18 @@ public class WarehouseServiceTest {
     }
 
     @Test
-    public void test_findClosestWarehouse_ExistingProduct_AvailableInMoreThanOnWarehouse() {
-        WarehouseService warehouseService = new WarehouseService(warehouseRepo);
+    public void test_findClosestWarehouse_NullProduct() {
+        Warehouse wh = warehouseService.findClosestWarehouse(null, 1);
+
+        assertNull(wh);
+
+        InOrder inOrder = inOrder(warehouseRepo, productRepo);
+        inOrder.verify(warehouseRepo).all();
+        inOrder.verifyNoMoreInteractions();
+    }
+
+    @Test
+    public void test_findClosestWarehouse_ExistingProduct_AvailableInMoreThanOneWarehouse() {
         Warehouse wh = warehouseService.findClosestWarehouse(EXISTING_IN_ALL_WH_PRODUCT, 1);
 
         assertNotNull(wh);
@@ -127,11 +177,14 @@ public class WarehouseServiceTest {
         InOrder inOrder = inOrder(warehouseRepo, productRepo);
         inOrder.verify(warehouseRepo).all();
         inOrder.verifyNoMoreInteractions();
+
+        assertEquals(5, getStocksCount(0, EXISTING_IN_ALL_WH_PRODUCT));
+        assertEquals(2, getStocksCount(1, EXISTING_IN_ALL_WH_PRODUCT));
+        assertEquals(3, getStocksCount(2, EXISTING_IN_ALL_WH_PRODUCT));
     }
 
     @Test
     public void test_findClosestWarehouse_ExistingProduct_AvailableInOnlyOneWarehouse() {
-        WarehouseService warehouseService = new WarehouseService(warehouseRepo);
         Warehouse wh = warehouseService.findClosestWarehouse(EXISTING_IN_SINGE_WH_PRODUCT, 1);
 
         assertNotNull(wh);
@@ -139,11 +192,25 @@ public class WarehouseServiceTest {
         InOrder inOrder = inOrder(warehouseRepo, productRepo);
         inOrder.verify(warehouseRepo).all();
         inOrder.verifyNoMoreInteractions();
+
+        assertEquals(10, getStocksCount(0, EXISTING_IN_SINGE_WH_PRODUCT));
+    }
+
+    @Test
+    public void test_findClosestWarehouse_ExistingProduct_ZeroCount() {
+        Warehouse wh = warehouseService.findClosestWarehouse(EXISTING_IN_ALL_WH_PRODUCT, 0);
+
+        assertNotNull(wh);
+
+        InOrder inOrder = inOrder(warehouseRepo, productRepo);
+        inOrder.verify(warehouseRepo).all();
+        inOrder.verifyNoMoreInteractions();
+
+        assertEquals(5, getStocksCount(0, EXISTING_IN_ALL_WH_PRODUCT));
     }
 
     @Test
     public void test_getStock_ExistingProduct() {
-        WarehouseService warehouseService = new WarehouseService(warehouseRepo);
         Warehouse wh0 = warehouseRepo.getById(0);
         Stock stock = warehouseService.getStock(wh0, EXISTING_IN_ALL_WH_PRODUCT);
 
@@ -152,7 +219,6 @@ public class WarehouseServiceTest {
 
     @Test
     public void test_getStock_NotExistingProduct() {
-        WarehouseService warehouseService = new WarehouseService(warehouseRepo);
         Warehouse wh0 = warehouseRepo.getById(0);
         Stock stock = warehouseService.getStock(wh0, NOT_EXISTING_PRODUCT);
 
