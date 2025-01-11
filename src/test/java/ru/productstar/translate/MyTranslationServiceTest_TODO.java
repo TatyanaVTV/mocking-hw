@@ -1,8 +1,55 @@
 package ru.productstar.translate;
 
+import com.google.cloud.translate.Translate;
+import com.google.cloud.translate.Translation;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.AdditionalMatchers.not;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
 public class MyTranslationServiceTest_TODO {
+
+    @Mock
+    private Translate googleTranslate;
+
+    @Mock
+    private Translation translation;
+
+    private MyTranslationService service;
+
+    private static final String SOME_SENTENCE = "Some sentence";
+    private static final String SOME_SENTENCE_RU_TRANSLATION = "Какое-то предложение";
+    private static final String VALID_TARGET_LANGUAGE = "ru";
+    private static final String INVALID_TARGET_LANGUAGE = "es";
+
+    private static final String SOME_SENTENCE_FOR_EXCEPTION = "Some sentence for exception";
+
+    @BeforeEach
+    public void setup() {
+        MockitoAnnotations.openMocks(this);
+
+        service = new MyTranslationService(googleTranslate);
+
+        var validLanguage = getTranslateOptionForValidLanguage();
+        lenient().when(googleTranslate.translate(eq(SOME_SENTENCE), eq(validLanguage))).thenReturn(translation);
+        lenient().when(googleTranslate.translate(not(eq(SOME_SENTENCE)), eq(validLanguage))).thenThrow(new RuntimeException());
+
+        lenient().when(translation.getTranslatedText()).thenReturn(SOME_SENTENCE_RU_TRANSLATION);
+    }
+
+    private Translate.TranslateOption getTranslateOptionForValidLanguage() {
+        return Translate.TranslateOption.targetLanguage(VALID_TARGET_LANGUAGE);
+    }
 
     /**
      * 1. Happy case test.
@@ -13,7 +60,14 @@ public class MyTranslationServiceTest_TODO {
      */
     @Test
     void translateWithGoogle_anySentenceAndTargetLanguageIsRu_success() {
-        //TODO
+        var translationResult = service.translateWithGoogle(SOME_SENTENCE, VALID_TARGET_LANGUAGE);
+        assertEquals(SOME_SENTENCE_RU_TRANSLATION, translationResult);
+
+        InOrder inOrder = inOrder(googleTranslate, translation);
+        inOrder.verify(googleTranslate, times(1))
+                .translate(eq(SOME_SENTENCE), eq(getTranslateOptionForValidLanguage()));
+        inOrder.verify(translation, times(1)).getTranslatedText();
+        inOrder.verifyNoMoreInteractions();
     }
 
     /**
@@ -24,7 +78,11 @@ public class MyTranslationServiceTest_TODO {
      */
     @Test
     void translateWithGoogle_anySentenceAndTargetLanguageIsNotRu_failure() {
-        //TODO
+        assertThrows(IllegalArgumentException.class,
+                () -> service.translateWithGoogle(SOME_SENTENCE, INVALID_TARGET_LANGUAGE));
+
+        verify(googleTranslate, never()).translate(anyString(), any());
+        verify(translation, never()).getTranslatedText();
     }
 
     /**
@@ -36,6 +94,13 @@ public class MyTranslationServiceTest_TODO {
      */
     @Test
     void translateWithGoogle_googleTranslateThrowsException_failure() {
-        //TODO
+        assertThrows(MyTranslationServiceException.class,
+                () -> service.translateWithGoogle(SOME_SENTENCE_FOR_EXCEPTION, VALID_TARGET_LANGUAGE));
+
+        InOrder inOrder = inOrder(googleTranslate, translation);
+        inOrder.verify(googleTranslate, times(1))
+                .translate( eq(SOME_SENTENCE_FOR_EXCEPTION), eq(getTranslateOptionForValidLanguage()) );
+        inOrder.verify(translation, never()).getTranslatedText();
+        inOrder.verifyNoMoreInteractions();
     }
 }
